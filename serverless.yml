@@ -1,0 +1,124 @@
+service: sls-chat-v2
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: nodejs16.x
+
+  environment:
+    CONNECTION_DB_TABLE: ${self:resources.Resources.messagesTable.Properties.TableName}
+    GROUP_TABLE: ${self:resources.Resources.groupTable.Properties.TableName}
+
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - "dynamodb:PutItem"
+            - "dynamodb:GetItem"
+            - "dynamodb:DeleteItem"
+            - "dynamodb:Scan"
+            - "dynamodb:UpdateItem"
+            - "dynamodb:Query"
+          Resource:
+            - "arn:aws:dynamodb:us-east-1:*:*"
+        - Effect: Allow
+          Action:
+            - "execute-api:ManageConnections"
+          Resource:
+            - "arn:aws:execute-api:*:*:**/@connections/*"
+
+functions:
+  connectHandler:
+    handler: handler.connectHandler
+    events:
+      - websocket:
+          route: $connect
+  setUserHandler:
+    handler: handler.setUserHandler
+    events:
+      - websocket:
+          route: setUser
+  disconnectHandler:
+    handler: handler.disconnectHandler
+    events:
+      - websocket:
+          route: $disconnect
+  defaultHandler:
+    handler: handler.defaultHandler
+    events:
+      - websocket:
+          route: $default
+  createGroupHandler: #
+    handler: handler.createGroupHandler
+    events:
+      - websocket:
+          route: createGroup
+  joinGroupHandler:
+    handler: handler.joinGroupHandler
+    events:
+      - websocket:
+          route: joinGroup
+  sendMessageHandler:
+    handler: handler.sendMessageHandler
+    events:
+      - websocket:
+          route: sendMessage
+  broadcastHandler: # works
+    handler: handler.broadcastMessageHandler
+    events:
+      - websocket:
+          route: broadcastMessage
+  sendMessageToGroupHandler:
+    handler: handler.sendMessageToGroupHandler
+    events:
+      - websocket:
+          route: sendMessageToGroup
+
+resources:
+  Resources:
+    messagesTable:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: "connectionId"
+            AttributeType: "S"
+          - AttributeName: "username"
+            AttributeType: "S"
+        KeySchema:
+          - AttributeName: "connectionId"
+            KeyType: "HASH"
+        GlobalSecondaryIndexes:
+          - KeySchema:
+              - AttributeName: "username"
+                KeyType: "HASH"
+            Projection:
+              ProjectionType: "ALL"
+            IndexName: username-index
+        BillingMode: PAY_PER_REQUEST
+        TableName: messages-v2
+    groupTable:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: "groupId"
+            AttributeType: "S"
+          - AttributeName: "groupName"
+            AttributeType: "S"
+        KeySchema:
+          - AttributeName: "groupId"
+            KeyType: "HASH"
+        GlobalSecondaryIndexes:
+          - IndexName: groupName-index
+            KeySchema:
+              - AttributeName: "groupName"
+                KeyType: "HASH"
+            Projection:
+              ProjectionType: "ALL"
+            ProvisionedThroughput:
+              ReadCapacityUnits: 5
+              WriteCapacityUnits: 5
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+        TableName: groupTable-v2
